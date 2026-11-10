@@ -1,0 +1,54 @@
+
+name: CloudForge PR Validation
+
+on:
+  pull_request:
+    branches:
+      - int
+      - uat
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: cloudforge-pr-${{ github.event.pull_request.base.ref }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  code-analyzer:
+    name: Code Analyzer
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: "17"
+
+      - name: Install Salesforce CLI
+        run: npm install --global @salesforce/cli@latest
+
+      - name: Install Code Analyzer
+        run: sf plugins install code-analyzer@latest
+
+      - name: Run Salesforce Code Analyzer
+        id: analyzer
+        uses: forcedotcom/run-code-analyzer@v2
+        with:
+          run-arguments: --workspace . --view detail --output-file sfca_results.html --output-file sfca_results.json
+          results-artifact-name: cloudforge-code-analyzer-results
+          github-token: ${{ github.token }}
+
+      - name: Enforce Code Analyzer quality gate
+        if: >-
+          steps.analyzer.outputs.exit-code > 0 ||
+          steps.analyzer.outputs.num-violations-in-changed-files > 0
+        run: |
+          echo "Code Analyzer found violations."
+          exit 1
